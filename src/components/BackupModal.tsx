@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { exportBackup, importBackup } from '../services/backup';
+import { exportBackup, importBackup, exportCSV } from '../services/backup';
 
 interface Props {
   onClose: () => void;
@@ -25,20 +25,28 @@ export function BackupModal({ onClose }: Props) {
     <div className="fixed inset-0 z-50 bg-black/80 flex items-end justify-center">
       <div className="bg-zinc-900 border-t border-zinc-800 rounded-t-3xl w-full max-w-md p-5 pb-8">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-base font-bold text-white">Backup date</h2>
+          <h2 className="text-base font-bold text-white">Backup & Export Date</h2>
           <button onClick={onClose} aria-label="Închide" className="text-zinc-400 hover:text-white text-xl leading-none px-1">×</button>
         </div>
 
         <p className="text-xs text-zinc-500 mb-4 leading-relaxed">
-          Datele sunt salvate doar local, pe acest dispozitiv. Exportă un backup înainte să schimbi telefonul sau să ștergi cache-ul browserului.
+          Datele sunt salvate doar local, pe acest dispozitiv. Exportă un backup JSON pentru restaurare sau un fișier CSV pentru vizualizare în Excel / Google Sheets.
         </p>
 
-        <button
-          onClick={() => exportBackup()}
-          className="w-full h-11 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold rounded-xl text-sm mb-3"
-        >
-          Exportă backup (JSON)
-        </button>
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <button
+            onClick={() => exportBackup()}
+            className="h-11 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold rounded-xl text-xs transition"
+          >
+            Exportă JSON
+          </button>
+          <button
+            onClick={() => exportCSV()}
+            className="h-11 bg-zinc-800 hover:bg-zinc-700 text-emerald-400 font-semibold rounded-xl text-xs border border-zinc-700 transition"
+          >
+            Exportă CSV
+          </button>
+        </div>
 
         <button
           onClick={() => fileInputRef.current?.click()}

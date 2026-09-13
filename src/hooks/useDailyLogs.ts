@@ -9,20 +9,58 @@ export function useDailyLogs(date: string) {
   ) ?? [];
 
   const byMeal: Record<MealType, LogEntry[]> = {
-    breakfast: [], lunch: [], dinner: [], snack: [],
+    breakfast: [],
+    lunch: [],
+    dinner: [],
+    snack: [],
   };
-  let totalCalories = 0;
-  let totalProtein = 0;
-  let totalCarbs = 0;
-  let totalFat = 0;
+
+  let consumedCalories = 0;
+  let consumedProtein = 0;
+  let consumedCarbs = 0;
+  let consumedFat = 0;
+
+  let plannedCalories = 0;
+  let plannedProtein = 0;
+  let plannedCarbs = 0;
+  let plannedFat = 0;
 
   for (const entry of logs) {
-    byMeal[entry.mealType].push(entry);
-    totalCalories += entry.calories;
-    totalProtein += entry.protein;
-    totalCarbs += entry.carbs;
-    totalFat += entry.fat;
+    const meal = (entry.mealType && byMeal[entry.mealType]) ? entry.mealType : 'snack';
+    byMeal[meal].push(entry);
+
+    const isConsumed = (entry.status || 'consumed') === 'consumed';
+    const c = Number.isFinite(entry.calories) ? entry.calories : 0;
+    const p = Number.isFinite(entry.protein) ? entry.protein : 0;
+    const cb = Number.isFinite(entry.carbs) ? entry.carbs : 0;
+    const f = Number.isFinite(entry.fat) ? entry.fat : 0;
+
+    if (isConsumed) {
+      consumedCalories += c;
+      consumedProtein += p;
+      consumedCarbs += cb;
+      consumedFat += f;
+    } else if (entry.status === 'planned') {
+      plannedCalories += c;
+      plannedProtein += p;
+      plannedCarbs += cb;
+      plannedFat += f;
+    }
   }
 
-  return { logs, byMeal, totalCalories, totalProtein, totalCarbs, totalFat };
+  return {
+    logs,
+    byMeal,
+    // Consumate efectiv
+    totalCalories: Math.round(consumedCalories),
+    totalProtein: Math.round(consumedProtein * 10) / 10,
+    totalCarbs: Math.round(consumedCarbs * 10) / 10,
+    totalFat: Math.round(consumedFat * 10) / 10,
+    // Planificate
+    plannedCalories: Math.round(plannedCalories),
+    plannedProtein: Math.round(plannedProtein * 10) / 10,
+    plannedCarbs: Math.round(plannedCarbs * 10) / 10,
+    plannedFat: Math.round(plannedFat * 10) / 10,
+    hasPlanned: plannedCalories > 0,
+  };
 }

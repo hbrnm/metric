@@ -11,8 +11,9 @@ interface Props {
 
 export function BarcodeScannerModal({ date, mealType, onClose }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const isProcessingRef = useRef(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [detectorSupported] = useState(() => 'BarcodeDetector' in window);
+  const [detectorSupported] = useState(() => typeof window !== 'undefined' && 'BarcodeDetector' in window);
   const [loading, setLoading] = useState(false);
   const [manualBarcode, setManualBarcode] = useState('');
   const [notFound, setNotFound] = useState(false);
@@ -20,62 +21,99 @@ export function BarcodeScannerModal({ date, mealType, onClose }: Props) {
   const [grams, setGrams] = useState('100');
   const [error, setError] = useState('');
 
+  // 1. Initializare camera video
   useEffect(() => {
     if (!detectorSupported || food) return;
     let stream: MediaStream | null = null;
     let active = true;
 
     navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: 'environment' } })
+      ?.getUserMedia({ video: { facingMode: 'environment' } })
       .then((s) => {
-        if (!active) { s.getTracks().forEach((t) => t.stop()); return; }
+        if (!active) {
+          s.getTracks().forEach((t) => t.stop());
+          return;
+        }
         stream = s;
         if (videoRef.current) {
           videoRef.current.srcObject = s;
-          videoRef.current.play();
+          videoRef.current.play().catch(() => {});
         }
       })
-      .catch(() => setCameraError('Accesul la cameră a fost refuzat.'));
+      .catch(() => {
+        if (active) setCameraError('Accesul la cameră a fost refuzat sau camera nu este disponibilă.');
+      });
 
     return () => {
       active = false;
-      stream?.getTracks().forEach((t) => t.stop());
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
     };
   }, [detectorSupported, food]);
 
-  useEffect(() => {
-    if (!detectorSupported || food || loading || cameraError) return;
-    // @ts-ignore — BarcodeDetector nu are tipuri TS standard încă
-    const detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
-    const id = window.setInterval(async () => {
-      if (!videoRef.current || videoRef.current.readyState < 2) return;
-      try {
-        const results = await detector.detect(videoRef.current);
-        if (results.length > 0) handleLookup(results[0].rawValue);
-      } catch {
-        // frame fără cod detectabil, ignorăm
-      }
-    }, 400);
-    return () => clearInterval(id);
-  }, [detectorSupported, food, loading, cameraError]);
+  const handleLookup = async (rawCode: string) => {
+    const code = rawCode.trim();
+    if (!code || isProcessingRef.current) return;
 
-  const handleLookup = async (code: string) => {
-    if (!code.trim() || loading) return;
+    isProcessingRef.current = true;
     setLoading(true);
     setNotFound(false);
-    const result = await fetchFoodByBarcode(code);
-    setLoading(false);
-    if (result) {
-      setFood(result);
-    } else {
+    setError('');
+
+    try {
+      const result = await fetchFoodByBarcode(code);
+      if (result) {
+        setFood(result);
+      } else {
+        setNotFound(true);
+      }
+    } catch {
       setNotFound(true);
+    } finally {
+      setLoading(false);
+      isProcessingRef.current = false;
     }
   };
 
+  // 2. Bucla de detectie a codurilor de bare
+  useEffect(() => {
+    if (!detectorSupported || food || cameraError) return;
+
+    // @ts-ignore
+    const detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'qr_code'] });
+    let intervalId: number | undefined;
+
+    intervalId = window.setInterval(async () => {
+      if (!videoRef.current || videoRef.current.readyState < 2 || isProcessingRef.current) return;
+      try {
+        const results = await detector.detect(videoRef.current);
+        if (results && results.length > 0 && results[0].rawValue) {
+          handleLookup(results[0].rawValue);
+        }
+      } catch {
+        // cadru intermediar fără cod detectabil
+      }
+    }, 450);
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [detectorSupported, food, cameraError]);
+
   const handleSave = async () => {
     if (!food) return;
+    const parsedGrams = parseFloat(grams);
+    if (!Number.isFinite(parsedGrams) || parsedGrams <= 0) {
+      setError('Te rugăm să introduci un gramaj pozitiv valid.');
+      return;
+    }
+
     try {
-      await logFoodByGrams({ date, mealType, food, grams: parseFloat(grams) || 0 });
+      await logFoodByGrams({ date, mealType, food, grams: parsedGrams });
       onClose();
     } catch (e) {
       setError((e as Error).message);
@@ -105,8 +143,14 @@ export function BarcodeScannerModal({ date, mealType, onClose }: Props) {
             <div className="bg-zinc-950 border border-zinc-800 p-3 rounded-xl flex items-center justify-between">
               <span className="text-xs font-semibold text-zinc-300">Cantitate consumată:</span>
               <div className="flex items-center gap-1.5 w-24">
-                <input type="number" inputMode="decimal" value={grams} onChange={(e) => setGrams(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-right font-mono text-sm text-white" />
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="1"
+                  value={grams}
+                  onChange={(e) => setGrams(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-right font-mono text-sm text-white"
+                />
                 <span className="text-xs text-zinc-500">g</span>
               </div>
             </div>
@@ -116,7 +160,7 @@ export function BarcodeScannerModal({ date, mealType, onClose }: Props) {
             <button onClick={handleSave} className="w-full h-11 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold rounded-xl text-sm">
               Adaugă în jurnal
             </button>
-            <button onClick={() => setFood(null)} className="w-full h-9 text-zinc-400 text-xs">
+            <button onClick={() => setFood(null)} className="w-full h-9 text-zinc-400 text-xs hover:text-white">
               Scanează alt produs
             </button>
           </div>
@@ -126,7 +170,7 @@ export function BarcodeScannerModal({ date, mealType, onClose }: Props) {
               <div className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-zinc-800">
                 <video ref={videoRef} playsInline muted className="w-full h-full object-cover" />
                 {loading && (
-                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white text-xs">
+                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white text-xs font-semibold">
                     Căutare produs...
                   </div>
                 )}
@@ -135,7 +179,7 @@ export function BarcodeScannerModal({ date, mealType, onClose }: Props) {
 
             {!detectorSupported && (
               <p className="text-xs text-zinc-500 bg-zinc-950 border border-zinc-800 rounded-xl p-3">
-                Scanarea automată prin cameră nu e suportată de acest browser (frecvent cazul pe iOS/Safari). Introdu codul manual mai jos.
+                Scanarea automată prin cameră nu este suportată nativ de acest browser (frecvent pe iOS/Safari). Introdu codul manual mai jos.
               </p>
             )}
 
@@ -144,7 +188,7 @@ export function BarcodeScannerModal({ date, mealType, onClose }: Props) {
             )}
 
             {notFound && (
-              <p className="text-xs text-rose-400">Produsul nu a fost găsit în Open Food Facts.</p>
+              <p className="text-xs text-rose-400">Produsul nu a fost găsit în Open Food Facts sau datele sunt incomplete.</p>
             )}
 
             <div className="pt-1">
@@ -158,6 +202,7 @@ export function BarcodeScannerModal({ date, mealType, onClose }: Props) {
                   placeholder="ex: 5941014002345"
                   value={manualBarcode}
                   onChange={(e) => setManualBarcode(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleLookup(manualBarcode); }}
                   className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-white font-mono"
                 />
                 <button
@@ -165,7 +210,7 @@ export function BarcodeScannerModal({ date, mealType, onClose }: Props) {
                   disabled={!manualBarcode.trim() || loading}
                   className="px-4 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white font-bold rounded-xl text-xs"
                 >
-                  Caută
+                  {loading ? '...' : 'Caută'}
                 </button>
               </div>
             </div>

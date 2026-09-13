@@ -20,6 +20,29 @@ export default defineConfig({
           { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
           { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
         ],
+        shortcuts: [
+          {
+            name: 'Adăugare rapidă',
+            short_name: 'Adaugă',
+            description: 'Înregistrează rapid o masă sau aliment',
+            url: '/?action=quicklog',
+            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+          },
+          {
+            name: 'Căutare alimente',
+            short_name: 'Caută',
+            description: 'Caută în catalogul de alimente',
+            url: '/?action=search',
+            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+          },
+          {
+            name: 'Înregistrează greutatea',
+            short_name: 'Greutate',
+            description: 'Introdu greutatea de astăzi și verifică TDEE',
+            url: '/?action=weight',
+            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+          },
+        ],
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],

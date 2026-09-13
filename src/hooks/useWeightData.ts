@@ -1,24 +1,26 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { computeAdaptiveTDEE, MetabolicAnalysis } from '../algorithms/metabolic';
+import { getLocalDateString, shiftDate } from '../utils/date';
+import { WeightEntry } from '../types/nutrition';
 
 const ANALYSIS_WINDOW_DAYS = 21;
 
 export function useWeightData(): {
-  history: { date: string; weightKg: number; trendWeight: number }[];
+  history: WeightEntry[];
   analysis: MetabolicAnalysis;
 } {
   const result = useLiveQuery(async () => {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - ANALYSIS_WINDOW_DAYS);
-    const cutoffStr = cutoff.toISOString().split('T')[0];
+    const today = getLocalDateString();
+    const cutoffStr = shiftDate(today, -ANALYSIS_WINDOW_DAYS);
 
-    const weights = await db.weights.where('date').aboveOrEqual(cutoffStr).sortBy('date');
+    const weights = await db.weights.orderBy('date').toArray();
+    const analysisWeights = weights.filter((w) => w.date >= cutoffStr);
     const logs = await db.logs.where('date').aboveOrEqual(cutoffStr).toArray();
 
-    const analysis = computeAdaptiveTDEE(weights, logs);
+    const analysis = computeAdaptiveTDEE(analysisWeights, logs);
     return { history: weights, analysis };
-  });
+  }, []);
 
-  return result ?? { history: [], analysis: { isReliable: false, reason: 'Se încarcă...' } };
+  return result ?? { history: [], analysis: { isReliable: false, reason: 'Se încarcă datele...' } };
 }
